@@ -1,6 +1,7 @@
 package io.github.rulercompass1729.guandan;
 
 import android.app.Activity;
+import android.animation.ValueAnimator;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -52,6 +53,10 @@ public final class MainActivity extends Activity {
     private String chosen = "", selectionMessage = "", activityMessage = "", lastRound = "", lastStage = "";
     private int lastVersion = -1, lastSelf = -1, hintCursor, previewGeneration;
     private boolean compact;
+    private boolean lastCueReady;
+    private String lastCueTitle = "";
+    private String resultAnimationKey = "";
+    private long resultAnimationStarted = -1;
     private AlertDialog groupDialog;
     private AlertDialog patternDialog;
     private boolean groupCommitted;
@@ -103,7 +108,9 @@ public final class MainActivity extends Activity {
     private LinearLayout column() { LinearLayout value = new LinearLayout(this); value.setOrientation(LinearLayout.VERTICAL); return value; }
     private LinearLayout row() { LinearLayout value = new LinearLayout(this); value.setOrientation(LinearLayout.HORIZONTAL); value.setGravity(Gravity.CENTER_VERTICAL); return value; }
     private Button button(String label, String name, boolean primary, Runnable action) {
-        Button value = new Button(this); value.setText(label); value.setAllCaps(false); value.setTextSize(17);
+        Button value = new Button(this) {
+            @Override public void setEnabled(boolean enabled) { super.setEnabled(enabled); setAlpha(enabled ? 1f : .42f); }
+        }; value.setText(label); value.setAllCaps(false); value.setTextSize(17);
         value.setTextColor(primary ? INK : TEXT); value.setMinHeight(dp(48)); value.setMinimumHeight(dp(48));
         value.setPadding(dp(12), dp(4), dp(12), dp(4)); value.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         value.setBackground(surface(primary ? GOLD : Color.rgb(32, 60, 44), 5, primary ? Color.rgb(228, 207, 157) : Color.rgb(92, 116, 91)));
@@ -149,7 +156,7 @@ public final class MainActivity extends Activity {
             if (client.view() == null) { renderHome(); return; }
             JSONObject v = client.view();
             ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(DARK);
-            LinearLayout page = column(); page.setId(R.id.app_root); page.setPadding(0, 0, 0, dp(4));
+            LinearLayout page = column(); page.setId(R.id.app_root); page.setPadding(0, 0, 0, 0);
             page.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[] { Color.rgb(34, 81, 64), Color.rgb(12, 47, 36) }));
             scroll.addView(page);
             LinearLayout shell = column(); shell.setBackgroundColor(DARK); shell.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1)); setContentView(shell);
@@ -163,26 +170,45 @@ public final class MainActivity extends Activity {
             if (client.pending()) { Button retry = button("重试这次操作", "retry_action", true, client::retry); retry.setEnabled(!client.busy()); shell.addView(retry, new LinearLayout.LayoutParams(-1, dp(48))); }
             String stage = v.getString("stage");
             if ("waiting".equals(stage)) { waiting(page, v); return; }
-            if ("roundOver".equals(stage) || "matchOver".equals(stage)) { result(page, v); return; }
+            if ("roundOver".equals(stage) || "matchOver".equals(stage)) { result(page, v, shell); return; }
             page.addView(board(v), new LinearLayout.LayoutParams(-1, dp(landscape ? Math.max(80, Math.round(55 * getResources().getConfiguration().fontScale + 25)) : 160)));
             int self = v.getInt("self"); boolean auto = v.getJSONArray("seats").getJSONObject(self).optBoolean("auto");
             if (auto) {
                 Button resume = button("电脑正在代打 · 点这里接回", "resume_big", true, () -> client.submit("resume", null));
                 resume.setEnabled(canSubmit()); page.addView(resume, new LinearLayout.LayoutParams(-1, dp(48)));
             }
-            page.addView(hand(v)); page.addView(selection(v), new LinearLayout.LayoutParams(-1, dp(48)));
-            LinearLayout controls = row(); controls.setId(R.id.bottom_controls); controls.setGravity(Gravity.CENTER); controls.setBackgroundColor(DARK);
+            page.addView(hand(v)); shell.addView(selection(v), new LinearLayout.LayoutParams(-1, dp(48)));
+            LinearLayout dock = column(); dock.setId(R.id.bottom_controls); dock.setBackgroundColor(DARK);
+            LinearLayout controls = row(); controls.setGravity(Gravity.CENTER); controls.setPadding(dp(4), dp(4), dp(4), dp(4));
             boolean returning = "tribute".equals(stage), own = returning ? v.getJSONArray("returnIds").length() > 0 : v.getInt("turn") == self;
             boolean can = own && !auto && canSubmit();
-            Button hint = button("提示", "hint", false, this::hint); hint.setEnabled(can); addButton(controls, hint, 100);
+            String currentPlayer = v.optInt("turn", -1) >= 0 ? v.getJSONArray("seats").getJSONObject(v.getInt("turn")).optString("name", "牌友") : "牌友";
+            TurnCue cue = TurnCue.resolve(client.connected(), client.busy(), client.pending(), auto, returning, own, currentPlayer);
+            View turn = turnBanner(cue);
+            if (landscape) { LinearLayout.LayoutParams turnParams = new LinearLayout.LayoutParams(0, -1, 1); turnParams.setMargins(dp(4), 0, dp(12), 0); controls.addView(turn, turnParams); }
+            else dock.addView(turn, new LinearLayout.LayoutParams(-1, dp(56)));
+            Button hint = button("提示", "hint", false, this::hint); hint.setEnabled(can); addButton(controls, hint, landscape ? 100 : 0);
             Button pass = button("不要", "pass", false, () -> client.submit("pass", null));
-            pass.setEnabled(can && !returning && !v.isNull("last")); addButton(controls, pass, 100);
+            pass.setEnabled(can && !returning && !v.isNull("last")); addButton(controls, pass, landscape ? 100 : 0);
             boolean valid = returning ? selected.size() == 1 && contains(v.optJSONArray("returnIds"), selected.iterator().next()) : patterns.length() > 0 && !chosen.isEmpty();
             Button play = button(returning ? "确认还牌" : "确认出牌", "play", true,
                 () -> client.submit(returning ? "return" : "play", fields("ids", selectedIds(), "patternId", chosen)));
-            play.setEnabled(can && valid); addButton(controls, play, 172);
-            shell.addView(controls, 1, new LinearLayout.LayoutParams(-1, dp(56)));
+            play.setEnabled(can && valid); addButton(controls, play, landscape ? 172 : 0);
+            dock.addView(controls, new LinearLayout.LayoutParams(-1, dp(60)));
+            shell.addView(dock, new LinearLayout.LayoutParams(-1, -2));
         } catch (Exception e) { activityMessage = "牌桌信息暂时不完整，请重新连接"; }
+    }
+    private View turnBanner(TurnCue cue) {
+        LinearLayout box = column(); box.setId(R.id.turn_banner); box.setGravity(Gravity.CENTER_VERTICAL);
+        box.setPadding(dp(12), dp(3), dp(8), dp(3));
+        box.setBackground(surface(cue.ready ? Color.rgb(242, 207, 139) : Color.rgb(26, 49, 40), 7, cue.ready ? GOLD : Color.rgb(80, 107, 89)));
+        TextView title = text((cue.ready ? "▶ " : "") + cue.title, cue.ready ? 22 : 19, cue.ready ? INK : TEXT);
+        title.setId(R.id.round_status); title.setMaxLines(1); title.setTypeface(Typeface.DEFAULT, Typeface.BOLD); box.addView(title);
+        TextView detail = text(cue.detail, 12, cue.ready ? Color.rgb(52, 78, 61) : MUTED); detail.setId(R.id.turn_detail); detail.setMaxLines(1); box.addView(detail);
+        if (!lastCueTitle.equals(cue.title)) title.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        if (cue.ready && !lastCueReady && ValueAnimator.areAnimatorsEnabled()) { box.setAlpha(.55f); box.animate().alpha(1f).setDuration(600).start(); }
+        lastCueReady = cue.ready; lastCueTitle = cue.title;
+        return box;
     }
     private TextView status(String value) { TextView label = text(value, 15, GOLD); label.setId(R.id.status); label.setPadding(dp(14), dp(6), dp(14), dp(6)); return label; }
     private LinearLayout header(JSONObject v) {
@@ -200,6 +226,7 @@ public final class MainActivity extends Activity {
         return header;
     }
     private void renderHome() {
+        lastCueReady = false; lastCueTitle = "";
         String previousName = nickname == null ? client.name() : nickname.getText().toString();
         String previousCode = joinCode == null ? "" : joinCode.getText().toString();
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true); scroll.setBackgroundColor(DARK);
@@ -243,7 +270,7 @@ public final class MainActivity extends Activity {
             boolean empty = "empty".equals(player.getString("kind"));
             Button target = button(player.getString("name") + " · " + role + (empty ? "（点此换座）" : ""), empty ? "sit_" + seat : "seat_" + seat,
                 seat == self, () -> { if (empty) client.submit("switch", fields("seat", destination)); });
-            target.setEnabled(empty && canSubmit());
+            target.setEnabled(empty && canSubmit()); if (!empty) target.setAlpha(1f);
             if (landscape) {
                 if (seat % 2 == 0) { seatLine = row(); marginAdd(content, seatLine, 10); }
                 addButton(seatLine, target, 0);
@@ -273,14 +300,13 @@ public final class MainActivity extends Activity {
             TextView lastName = text(who + " · " + last.getJSONObject("pattern").getString("name"), 12, MUTED); lastName.setMaxLines(1); center.addView(lastName);
             JSONArray cards = last.getJSONArray("cards");
             for (int i = 0; i < Math.min(10, cards.length()); i++) {
-                JSONObject card = cards.getJSONObject(i); TextView mini = text(rank(card.getInt("rank")) + suit(card.getString("suit")), 17, isRed(card) ? RED : INK);
-                mini.setTypeface(Typeface.SERIF, Typeface.BOLD); mini.setGravity(Gravity.CENTER); mini.setBackground(surface(PAPER, 3, Color.rgb(210, 201, 174)));
+                JSONObject card = cards.getJSONObject(i);
+                PokerCardView mini = new PokerCardView(this, card.getInt("rank"), card.getString("suit"), card.getInt("rank") == v.optInt("level") && "H".equals(card.getString("suit")));
+                mini.setContentDescription(suitName(card.getString("suit")) + rank(card.getInt("rank")));
+                mini.setId(R.id.played_card); mini.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
                 LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(28), dp(34)); p.leftMargin = dp(3); center.addView(mini, p);
             }
         }
-        String turn = "tribute".equals(v.getString("stage")) ? "贡还牌 · 请按提示还牌" : v.getInt("turn") == self ? "轮到你了" :
-            "轮到" + v.getJSONArray("seats").getJSONObject(Math.max(0, v.getInt("turn"))).getString("name");
-        TextView turnLabel = text(turn, 15, GOLD); turnLabel.setId(R.id.round_status); turnLabel.setPadding(dp(10), 0, 0, 0); center.addView(turnLabel);
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-2, dp(39), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL); p.bottomMargin = dp(2); board.addView(center, p);
         return board;
     }
@@ -290,13 +316,15 @@ public final class MainActivity extends Activity {
         TextView icon = text(player.getString("name").substring(0, 1), 15, GOLD); icon.setGravity(Gravity.CENTER);
         icon.setBackground(surface(Color.rgb(53, 83, 58), 20, Color.rgb(117, 138, 98))); person.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(30)));
         LinearLayout details = column(); details.setPadding(dp(7), 0, 0, 0);
-        TextView name = text(player.getString("name") + "  " + player.optInt("count") + "张", 14, TEXT); name.setMaxLines(1); details.addView(name);
+        boolean active = "playing".equals(v.optString("stage")) && v.optInt("turn") == seat;
+        if (active) person.setBackground(surface(Color.rgb(45, 77, 54), 7, GOLD));
+        TextView name = text((active ? "▶ " : "") + player.getString("name") + "  " + player.optInt("count") + "张", 14, TEXT); name.setMaxLines(1); details.addView(name);
         String kind = "ai".equals(player.optString("kind")) ? "电脑" : player.optBoolean("auto") ? "电脑代打" : player.optBoolean("connected") ? "已入座" : "暂时离线";
         details.addView(text((mate ? "你的队友" : "另一队") + " · " + kind, 10, mate ? GOLD : MUTED)); person.addView(details);
         FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-2, -2, gravity); p.topMargin = dp(top); p.leftMargin = dp(side); p.rightMargin = dp(side); board.addView(person, p);
     }
     private View hand(JSONObject v) throws Exception {
-        JSONArray source = v.getJSONArray("hand"); LinearLayout area = column(); area.setId(R.id.hand); area.setPadding(dp(8), dp(6), dp(8), 0);
+        JSONArray source = v.getJSONArray("hand"); LinearLayout area = column(); area.setId(R.id.hand); area.setPadding(dp(8), dp(4), dp(8), 0);
         TextView measure = text(compact ? "10♠" : "10", compact ? 18 : 21, INK); measure.setTypeface(Typeface.SERIF, Typeface.BOLD);
         int minimumWidth = Math.max(52, Math.round(measure.getPaint().measureText(measure.getText().toString()) / getResources().getDisplayMetrics().density) + 12);
         int columns = Math.min(14, Math.max(3, (widthDp - 16) / (minimumWidth + 4)));
@@ -330,7 +358,7 @@ public final class MainActivity extends Activity {
         } else {
             int rows = Math.max((27 + columns - 1) / columns, (cards.size() + columns - 1) / columns);
             for (int r = 0; r < rows; r++) {
-                LinearLayout line = row();
+                LinearLayout line = row(); line.setClipChildren(false); line.setClipToPadding(false);
                 for (int c = 0; c < columns; c++) {
                     int index = r * columns + c; View item = index < cards.size() ? card(cards.get(index), v, true) : new View(this);
                     LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(cardHeight()), 1); p.setMargins(dp(2), 0, dp(2), dp(4)); line.addView(item, p);
@@ -343,17 +371,12 @@ public final class MainActivity extends Activity {
     private FrameLayout card(JSONObject c, JSONObject v, boolean interactive) throws Exception {
         int cardId = c.getInt("id"), rank = c.getInt("rank"); boolean on = selected.contains(cardId), red = isRed(c);
         FrameLayout card = new FrameLayout(this); if (interactive) card.setId(id("card_" + cardId));
-        card.setPadding(dp(4), dp(3), dp(4), dp(3)); card.setSelected(on);
+        card.setPadding(dp(1), dp(1), dp(1), dp(1)); card.setSelected(on);
         card.setBackground(surface(on ? Color.rgb(244, 224, 175) : PAPER, 4, on ? GOLD : Color.rgb(207, 200, 180))); card.setElevation(dp(on ? 4 : 2));
         card.setTranslationY(on ? -dp(4) : 0);
-        TextView corner = text(rank(rank) + (compact && rank < 16 ? suit(c.getString("suit")) : ""), compact ? 18 : 21, red ? RED : INK);
-        corner.setTypeface(rank >= 16 ? Typeface.DEFAULT : Typeface.SERIF, Typeface.BOLD); corner.setMaxLines(1); if (rank >= 16) corner.setTextSize(11);
-        card.addView(corner, new FrameLayout.LayoutParams(-1, -2, Gravity.TOP));
-        TextView shape = text(suit(c.getString("suit")), 25, red ? RED : INK); shape.setTypeface(Typeface.SERIF);
-        card.addView(shape, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.LEFT));
         boolean wild = rank == v.optInt("level") && "H".equals(c.getString("suit"));
-        if (wild) { TextView flag = text("配", 9, Color.rgb(113, 91, 43)); FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.RIGHT); card.addView(flag, p); }
-        if (on) { TextView mark = text("✓", 15, Color.rgb(113, 91, 43)); card.addView(mark, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.RIGHT)); }
+        PokerCardView face = new PokerCardView(this, rank, c.getString("suit"), wild); face.setSelected(on);
+        card.addView(face, new FrameLayout.LayoutParams(-1, -1));
         String description = suitName(c.getString("suit")) + rank(rank) + (wild ? "，红桃配牌" : "");
         card.setContentDescription((on ? "已选中，" : "") + description + (interactive ? "，点按选择或取消" : ""));
         if (interactive) { card.setClickable(true); card.setFocusable(true); card.setOnClickListener(x -> toggle(cardId)); }
@@ -440,6 +463,9 @@ public final class MainActivity extends Activity {
                         for (Map.Entry<Integer, FrameLayout> entry : tiles.entrySet()) {
                             boolean on = selected.contains(entry.getKey()); entry.getValue().setSelected(on);
                             entry.getValue().setBackground(surface(on ? Color.rgb(244, 224, 175) : PAPER, 4, on ? GOLD : Color.rgb(207, 200, 180)));
+                            entry.getValue().setTranslationY(on ? -dp(4) : 0);
+                            String oldDescription = entry.getValue().getContentDescription().toString().replace("已选中，", "");
+                            entry.getValue().setContentDescription((on ? "已选中，" : "") + oldDescription);
                         }
                     });
                     LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(60), dp(78)); p.setMargins(dp(4), dp(5), dp(4), dp(5)); line.addView(tile, p);
@@ -459,11 +485,37 @@ public final class MainActivity extends Activity {
     private void closeGroup(boolean keep) {
         if (groupDialog != null) { groupCommitted = keep; AlertDialog old = groupDialog; groupDialog = null; old.dismiss(); }
     }
-    private void result(LinearLayout page, JSONObject v) throws Exception {
+    private void result(LinearLayout page, JSONObject v, LinearLayout shell) throws Exception {
+        lastCueReady = false; lastCueTitle = "";
         LinearLayout box = column(); box.setPadding(dp(28), dp(20), dp(28), dp(20)); page.addView(box);
         boolean match = "matchOver".equals(v.getString("stage")); JSONObject result = v.getJSONObject("result");
         TextView title = text(match ? "本场结束 · 已过 A" : "第" + v.getInt("round") + "副结束", 27, GOLD); title.setGravity(Gravity.CENTER); box.addView(title);
         int own = v.getInt("self") % 2, winner = result.getInt("winner");
+        boolean won = winner == own;
+        LinearLayout ribbon = row(); ribbon.setId(R.id.result_banner); ribbon.setGravity(Gravity.CENTER);
+        ribbon.setPadding(dp(12), dp(5), dp(12), dp(5)); ribbon.setBackground(surface(won ? Color.rgb(44, 65, 40) : Color.rgb(34, 56, 64), 12, won ? GOLD : Color.rgb(148, 179, 193)));
+        ResultEmblemView emblem = new ResultEmblemView(this, won); ribbon.addView(emblem, new LinearLayout.LayoutParams(dp(68), dp(68)));
+        TextView resultMessage = text((match ? "本场" : "本副") + (won ? "获胜" : "失利"), 29, won ? GOLD : Color.rgb(186, 212, 222));
+        resultMessage.setId(R.id.result_message); resultMessage.setTypeface(Typeface.DEFAULT, Typeface.BOLD); ribbon.addView(resultMessage);
+        marginAdd(box, ribbon, 12);
+        String resultKey = v.optString("roundId") + ":" + v.optString("stage");
+        boolean firstResult = !resultKey.equals(display.getString("shownResult", ""));
+        if (firstResult) {
+            display.edit().putString("shownResult", resultKey).apply();
+            resultAnimationKey = resultKey;
+            resultAnimationStarted = ValueAnimator.areAnimatorsEnabled() ? android.os.SystemClock.uptimeMillis() : -1;
+        }
+        long elapsed = android.os.SystemClock.uptimeMillis() - resultAnimationStarted;
+        if (resultAnimationStarted >= 0 && resultKey.equals(resultAnimationKey) && elapsed < 850 && ValueAnimator.areAnimatorsEnabled()) {
+            // A submitted last card can publish both its accepted state and busy=false.
+            // Continue the same 850ms reveal when either notification rebuilds the view.
+            float progress = Math.max(0f, elapsed / 850f), scale = .88f + .12f * progress;
+            ribbon.setAlpha(.15f + .85f * progress); ribbon.setScaleX(scale); ribbon.setScaleY(scale);
+            ribbon.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(850 - elapsed)
+                .setInterpolator(new android.view.animation.LinearInterpolator()).start();
+            emblem.setRotation((won ? -15f : 10f) * (1f - progress));
+            emblem.animate().rotation(0).setDuration(850 - elapsed).setInterpolator(new android.view.animation.LinearInterpolator()).start();
+        }
         TextView outcome = text((winner == own ? "你们" : "另一队") + (match ? "过A获胜" : "升" + result.getInt("upgrade") + "级"), 21, TEXT); outcome.setGravity(Gravity.CENTER); marginAdd(box, outcome, 15);
         JSONArray order = result.getJSONArray("order"), seats = v.getJSONArray("seats");
         for (int i = 0; i < order.length(); i++) {
@@ -472,7 +524,9 @@ public final class MainActivity extends Activity {
             TextView entry = text(place + "　" + seats.getJSONObject(order.getInt(i)).getString("name"), 18, TEXT); entry.setGravity(Gravity.CENTER); marginAdd(box, entry, 9);
         }
         Button next = button(match ? "再来一场" : "继续下一副", "next_game", true, () -> client.submit(match ? "restart" : "next", null));
-        next.setEnabled(v.getInt("host") == v.getInt("self") && canSubmit()); marginAdd(box, next, 20);
+        next.setEnabled(v.getInt("host") == v.getInt("self") && canSubmit());
+        LinearLayout footer = row(); footer.setPadding(dp(16), dp(6), dp(16), dp(6)); footer.setBackgroundColor(DARK);
+        footer.addView(next, new LinearLayout.LayoutParams(-1, dp(48))); shell.addView(footer, new LinearLayout.LayoutParams(-1, dp(60)));
         if (v.getInt("host") != v.getInt("self")) marginAdd(box, text("等房主继续，大家会一起进入下一副。", 15, MUTED), 12);
         marginAdd(box, button("电脑难度：" + difficultyName(v), "difficulty_open", false, () -> difficultyDialog(false)), 10);
         marginAdd(box, button("离开牌桌", "leave_open", false, this::leave), 10);
@@ -526,7 +580,7 @@ public final class MainActivity extends Activity {
     private void homeHelp() {
         dialog("帮助").setItems(new String[] { "玩法说明", "设置亲友联机服务", "关于与开源许可" }, (d, which) -> {
             if (which == 0) rules(); else if (which == 1) serverDialog(); else dialog("亲友掼蛋 " + BuildConfig.VERSION_NAME)
-                .setMessage("RulerCompass1729\n原生Android客户端。联机由服务端裁判，练习在本机运行同份规则。\n\nJava-WebSocket：MIT\nRhino：MPL 2.0\n源码与许可：https://github.com/RulerCompass1729/guandan")
+                .setMessage("RulerCompass1729\n原生Android客户端。联机由服务端裁判，练习在本机运行同份规则。\n\nJava-WebSocket：MIT\nRhino：MPL 2.0\n扑克牌图案 SVG-cards：LGPL 2.1\n源码与许可：https://github.com/RulerCompass1729/guandan")
                 .setNeutralButton("开源许可", (about, button) -> licenses())
                 .setPositiveButton("知道了", null).show();
         }).setNegativeButton("返回", null).show();

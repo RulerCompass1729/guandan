@@ -36,6 +36,27 @@ public class PracticeEngineTest {
             }
         }
     }
+    @Test public void queuedResumeAfterAiTickKeepsCardsAndTakesBackControl() throws Exception {
+        PracticeEngine e = engine();
+        JsonObject first = request(e, object("op", "new", "testSeed", 1729));
+        JsonObject state = first.getAsJsonObject("state");
+        String round = state.getAsJsonObject("game").get("roundId").getAsString();
+        JsonObject auto = request(e, object("op", "action", "state", state, "action",
+            object("type", "auto", "expectedVersion", state.get("version"), "roundId", round)));
+        int observedVersion = auto.getAsJsonObject("state").get("version").getAsInt();
+        JsonObject tick = request(e, object("op", "tick", "state", auto.get("state")));
+        JsonObject resumed = request(e, object("op", "action", "state", tick.get("state"), "action",
+            object("type", "resume", "expectedVersion", observedVersion, "roundId", round)));
+        assertFalse(resumed.getAsJsonObject("state").get("auto").getAsBoolean());
+        assertEquals(tick.getAsJsonObject("state").getAsJsonObject("game").get("hands"),
+            resumed.getAsJsonObject("state").getAsJsonObject("game").get("hands"));
+        JsonObject rejected = JsonParser.parseString(e.request(object("op", "action", "state", tick.get("state"), "action",
+            object("type", "resume", "expectedVersion", observedVersion, "roundId", "different-round")).toString())).getAsJsonObject();
+        System.out.println("Cross-round control rejection: " + rejected);
+        assertTrue(rejected.has("error"));
+        assertTrue(rejected.get("error").getAsString().contains("已经是新一副牌"));
+        assertFalse(rejected.has("state"));
+    }
     @Test public void practiceRoundCompletesAndStateReopensWithoutChangingAHand() throws Exception {
       for (String difficulty : new String[] { "easy", "standard", "advanced" }) {
         PracticeEngine engine = engine();

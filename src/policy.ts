@@ -57,7 +57,21 @@ export function decide(obs: Observation): Decision {
   const finishing = options.find(p => p.cards.length === obs.hand.length);
   if (finishing) return { ids: finishing.cards.map(c => c.id), patternId: finishing.pattern.id };
   const mateLeading = obs.lead && obs.lead.seat % 2 === obs.seat % 2;
-  if (mateLeading) return { ids: null };
+  if (mateLeading && obs.lead) {
+    // Usually leave the lead with our partner. A next opponent who can finish
+    // this single/pair is an exception: block using public counts and our own
+    // high matching cards, without spending a bomb to overtake the partner.
+    const next = [1, 2, 3].map(n => (obs.seat + n) % 4).find(seat => obs.counts[seat] > 0);
+    const threatened = next !== undefined && next % 2 !== obs.seat % 2 &&
+      ['single', 'pair'].includes(obs.lead.pattern.kind) && obs.counts[next] === obs.lead.pattern.count;
+    if (threatened) {
+      const blocks = options.filter(play => tier(play.pattern) === 0 && play.pattern.kind === obs.lead!.pattern.kind);
+      blocks.sort((a, b) => b.pattern.high - a.pattern.high ||
+        a.cards.filter(c => wild(c, obs.level)).length - b.cards.filter(c => wild(c, obs.level)).length);
+      if (blocks.length) return { ids: blocks[0].cards.map(c => c.id), patternId: blocks[0].pattern.id };
+    }
+    return { ids: null };
+  }
   const mode = difficulty(obs.difficulty);
   if (mode === 'easy') {
     // Deliberately simple: use the smallest legal representative. The same

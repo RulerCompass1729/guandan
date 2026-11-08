@@ -168,4 +168,9 @@
     <item type="id" name="group_15"/>
     <item type="id" name="group_16"/>
     <item type="id" name="group_17"/>
+    <item type="id" name="turn_banner"/>
+    <item type="id" name="turn_detail"/>
+    <item type="id" name="result_banner"/>
+    <item type="id" name="result_message"/>
+    <item type="id" name="played_card"/>
 </resources>

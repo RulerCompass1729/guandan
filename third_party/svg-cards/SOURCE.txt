@@ -1,0 +1,7 @@
+SVG-cards by David Bellot and contributors (see AUTHORS).
+Source: https://github.com/htdebeer/SVG-cards
+Revision: 6d88bf9c594997b82bc5668ab0877a4e9b717665
+License: GNU LGPL 2.1. Source artwork is included as svg-cards.svg.
+The 54 unmodified upstream 2x PNG faces are bundled in android/app/src/main/assets/cards.
+Android draws enlarged indexes and a grayscale black joker at runtime; the original art is retained.
+No commercial game screenshots or card art are redistributed.

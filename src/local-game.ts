@@ -54,8 +54,13 @@ function needsBot(state: LocalState): number | null {
   return null;
 }
 function action(state: LocalState, a: Action): void {
-  if (a.expectedVersion !== state.version) throw new RuleError('STALE', '牌桌已经更新，请重新操作');
   if (a.roundId && a.roundId !== state.game.roundId) throw new RuleError('STALE', '已经是新一副牌');
+  // An AI tick may finish between a visible control tap and its queued request.
+  // Same-round explicit auto/resume intents are safe to apply to the newer state.
+  // Card moves and unbound/future-version requests still require an exact version.
+  const queuedControl = (a.type === 'auto' || a.type === 'resume') && a.roundId === state.game.roundId &&
+    Number.isInteger(a.expectedVersion) && a.expectedVersion >= 0 && a.expectedVersion < state.version;
+  if (a.expectedVersion !== state.version && !queuedControl) throw new RuleError('STALE', '牌桌已经更新，请重新操作');
   if (a.type === 'difficulty') {
     if (!['roundOver', 'matchOver'].includes(state.stage)) throw new RuleError('PHASE', '打完这一副后再调整难度');
     if (!isDifficulty(a.difficulty)) throw new RuleError('INPUT', '请选择轻松、标准或进阶');

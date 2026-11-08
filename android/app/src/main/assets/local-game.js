@@ -1,5 +1,5 @@
 // Generated from shared rules; run node tools/build-native-engine.mjs
-// source-sha256: 6fe3e0c0ee37fbf3727dbe630ab9178dcf88333ec373d9e25604389ca248d0a0
+// source-sha256: b8ab5ee5244df47eff4709edfc711e68eda3572e019a67be45a5975cd458e556
 "use strict";
 var GuandanOffline = (function() {
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -1108,8 +1108,31 @@ var GuandanOffline = (function() {
             return c.id;
           }), patternId: finishing.pattern.id };
         var mateLeading = obs.lead && obs.lead.seat % 2 === obs.seat % 2;
-        if (mateLeading)
+        if (mateLeading && obs.lead) {
+          var next = [1, 2, 3].map(function(n) {
+            return (obs.seat + n) % 4;
+          }).find(function(seat) {
+            return obs.counts[seat] > 0;
+          });
+          var threatened = next !== void 0 && next % 2 !== obs.seat % 2 && ["single", "pair"].includes(obs.lead.pattern.kind) && obs.counts[next] === obs.lead.pattern.count;
+          if (threatened) {
+            var blocks = options.filter(function(play2) {
+              return (0, rules_js_1.tier)(play2.pattern) === 0 && play2.pattern.kind === obs.lead.pattern.kind;
+            });
+            blocks.sort(function(a, b) {
+              return b.pattern.high - a.pattern.high || a.cards.filter(function(c) {
+                return (0, cards_js_1.wild)(c, obs.level);
+              }).length - b.cards.filter(function(c) {
+                return (0, cards_js_1.wild)(c, obs.level);
+              }).length;
+            });
+            if (blocks.length)
+              return { ids: blocks[0].cards.map(function(c) {
+                return c.id;
+              }), patternId: blocks[0].pattern.id };
+          }
           return { ids: null };
+        }
         var mode = difficulty(obs.difficulty);
         if (mode === "easy") {
           options.sort(function(a, b) {
@@ -1326,10 +1349,11 @@ var GuandanOffline = (function() {
       }
       function action(state, a) {
         var _a, _b;
-        if (a.expectedVersion !== state.version)
-          throw new game_js_1.RuleError("STALE", "\u724C\u684C\u5DF2\u7ECF\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u64CD\u4F5C");
         if (a.roundId && a.roundId !== state.game.roundId)
           throw new game_js_1.RuleError("STALE", "\u5DF2\u7ECF\u662F\u65B0\u4E00\u526F\u724C");
+        var queuedControl = (a.type === "auto" || a.type === "resume") && a.roundId === state.game.roundId && Number.isInteger(a.expectedVersion) && a.expectedVersion >= 0 && a.expectedVersion < state.version;
+        if (a.expectedVersion !== state.version && !queuedControl)
+          throw new game_js_1.RuleError("STALE", "\u724C\u684C\u5DF2\u7ECF\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u64CD\u4F5C");
         if (a.type === "difficulty") {
           if (!["roundOver", "matchOver"].includes(state.stage))
             throw new game_js_1.RuleError("PHASE", "\u6253\u5B8C\u8FD9\u4E00\u526F\u540E\u518D\u8C03\u6574\u96BE\u5EA6");

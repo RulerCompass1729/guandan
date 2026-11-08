@@ -1,6 +1,6 @@
 {
   "name": "@rulercompass1729/guandan",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "手机亲友牌桌，支持多人联机与电脑补位",
