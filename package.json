@@ -1,6 +1,6 @@
 {
   "name": "@rulercompass1729/guandan",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "手机亲友牌桌，支持多人联机与电脑补位",
@@ -11,6 +11,8 @@
     "test": "npm run build && node --test dist/tests/*.test.js",
     "test:browser": "playwright test",
     "test:simulation": "node dist/tools/simulate.js",
+    "build:android-engine": "node tools/build-native-engine.mjs",
+    "test:android": "node tools/native-test.mjs",
     "start": "node dist/src/server.js"
   },
   "dependencies": { "ws": "^8.18.3" },

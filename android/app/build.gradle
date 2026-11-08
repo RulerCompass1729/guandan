@@ -1,0 +1,59 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'io.github.rulercompass1729.guandan'
+    compileSdk { version = release(36) { minorApiLevel = 1 } }
+    buildToolsVersion '36.1.0'
+    defaultConfig {
+        applicationId 'io.github.rulercompass1729.guandan'
+        minSdk 26
+        targetSdk 36
+        versionCode 2
+        versionName '0.2.0'
+        buildConfigField 'String', 'SERVER_URL', '"' + (providers.gradleProperty('guandanServer').getOrElse('')).replace('\\', '\\\\').replace('"', '\\"') + '"'
+    }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+    signingConfigs {
+        release {
+            if (System.getenv('GUANDAN_KEYSTORE')) {
+                storeFile file(System.getenv('GUANDAN_KEYSTORE'))
+                storePassword System.getenv('GUANDAN_STORE_PASSWORD')
+                keyAlias 'rulercompass1729'
+                keyPassword System.getenv('GUANDAN_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.release }
+    }
+    testOptions { unitTests.returnDefaultValues = false }
+}
+
+dependencies {
+    implementation 'org.java-websocket:Java-WebSocket:1.6.0'
+    implementation 'org.slf4j:slf4j-nop:2.0.16'
+    // Latest Java-8-compatible Rhino; interpreted execution reuses the shared rules.
+    implementation 'org.mozilla:rhino:1.7.15.1'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.google.code.gson:gson:2.13.2'
+}
+
+// Android Studio builds the checked-in bundle without Node, but refuses stale rules.
+def sharedEngineSources = ['src/cards.ts', 'src/rules.ts', 'src/game.ts', 'src/policy.ts', 'src/model.ts', 'src/local-game.ts', 'tools/build-native-engine.mjs']
+tasks.register('verifySharedEngine') {
+    inputs.files(sharedEngineSources.collect { rootProject.file('../' + it) })
+    inputs.file('src/main/assets/local-game.js')
+    doLast {
+        def digest = java.security.MessageDigest.getInstance('SHA-256')
+        sharedEngineSources.each { path ->
+            digest.update((path + '\n').getBytes('UTF-8'))
+            digest.update(rootProject.file('../' + path).bytes)
+        }
+        def expected = '// source-sha256: ' + digest.digest().encodeHex().toString()
+        if (!file('src/main/assets/local-game.js').readLines('UTF-8').contains(expected)) {
+            throw new GradleException('Shared rules changed. Run npm ci && node tools/build-native-engine.mjs at the repository root, then rebuild.')
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn('verifySharedEngine') }

@@ -1,14 +1,43 @@
-# 掼蛋
+# 亲友掼蛋
 
-Android可安装版正在补齐。旧模拟器录屏被Chrome原生通知面板遮挡，原“Android前台可玩通过”已撤回；[验收记录](docs/acceptance.md)保留反例和独立成立的规则/服务证据。
+面向亲友的原生 Android 掼蛋，作者 **RulerCompass1729**。安装 APK 后可直接和三个电脑练习；多人连接同一服务，用八位桌号入座，空位由电脑补齐。
 
-面向手机的亲友牌桌。四个座位，支持1—4位玩家；不足的座位由电脑补齐，后来加入的亲友也可以接替空闲电脑席位。
+**当前是本机试玩和模拟器联机阶段，尚未部署国内公网游戏服务。** 发布包不预填服务器，异地联机需要组织者提供可达的 HTTPS 服务。Mate 30 实机和长辈独立试用仍待验，模拟器结果不代表华为 ROM 已通过。
 
-功能：独立手牌、对家合作、配牌解释、贡还与抗贡、升级过A、提示、电脑代打与接回、断线回桌、重试去重和服务重启恢复。界面支持大字号、选牌撤回与横竖屏。源码作者身份为 **RulerCompass1729**。
+## 安装与操作
 
-## 本地运行
+在 [Releases](https://github.com/RulerCompass1729/guandan/releases) 下载签名 APK，最低 Android 8.0（API 26）。界面使用 Android 原生控件，无 WebView、浏览器入口或 Google 服务依赖。
 
-需要Node.js 24或更新版本。本项目实际验证的运行环境及验收范围见[验收记录](docs/acceptance.md)。
+- 点“先和电脑练一局”，无需联网。
+- 牌桌右上角点“紧凑”或“大字”切换排列，应用记住选择，默认大字。紧凑排列显示各组总数，点牌组展开全部手牌。
+- 点牌选择，再点取消；提示也只帮忙选牌，最后仍需点“确认出牌”。
+- 暂时休息可点“代打”，回来点“接回”。关闭应用保留进度或联机座位；卸载、清除应用数据会移除凭据。
+- 联机服务只设置一次：帮助 → 设置亲友联机服务。组织者也可构建时预填地址，亲友无需自行配置。
+
+规则使用 `gd-2022-home-v1`，见[本桌规则](docs/rules.md)。支持对家合作、配牌解释、贡还与抗贡、升级过 A、断线恢复和动作去重。电脑为受限观测的规则策略，不调用外部大模型，未承诺棋力等级。陌生人匹配、商城和实时语音尚未实现。
+
+## Android Studio 工程
+
+用 Android Studio 打开 [android](android/)。实际构建使用 Android Studio 2025.3 自带 JDK 21、SDK 36.1、Build Tools 36.1.0、AGP 8.13.2 和 Gradle 8.13。也可使用已有 Android SDK/JDK：
+
+```sh
+cd android
+./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+```
+
+练习通过解释器运行仓库中同份规则和策略，界面不运行 HTML。预编译规则随源码提供，Android Studio 构建无需 Node；源文件变化后 Gradle 拒绝旧资源。更新资源：
+
+```sh
+npm ci
+npm run build:android-engine
+node tools/native-engine-fixtures.mjs
+```
+
+发行构建使用环境变量 `GUANDAN_KEYSTORE`、`GUANDAN_STORE_PASSWORD`、`GUANDAN_KEY_PASSWORD`，签名别名 `rulercompass1729`；签名材料不得提交。`-PguandanServer=https://your-service.example` 可预填联机地址。详见 [Android 验证](docs/android-testing.md)。
+
+## 联机服务
+
+需要 Node.js 24 或更新版本，SQLite 将牌局和动作回执一起保存。默认只监听本机：
 
 ```sh
 npm ci
@@ -16,29 +45,17 @@ npm run build
 npm start
 ```
 
-在浏览器打开 `http://127.0.0.1:3210`。一位玩家建桌，其他玩家在自己的浏览器输入8位牌桌号；开局时空位自动补电脑。退出后座位会释放，暂时休息应使用“请电脑代打”。
-
-默认只监听本机。如需同一局域网内的手机访问：
-
-```sh
-GUANDAN_HOST=0.0.0.0 npm start
-```
-
-手机与服务端电脑须能互通，使用电脑的局域网地址和端口访问。远程访问需要另外配置可达的服务和HTTPS；网页快捷方式不提供离线联机，微信外链也不是保证可用的游戏入口。本仓库公开源码，不等于已经提供面向公众的游戏服务。互联网正式运营前，应按实际主体和渠道核定适用要求。
-
-## 配置
+开发网页在 `http://127.0.0.1:3210`，用于浏览器回归；Android 安装包使用独立原生界面。模拟器设置中可填写 `http://10.0.2.2:3210`。其他 HTTP 地址会被原生客户端拒绝，异地手机须使用 HTTPS。
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `GUANDAN_HOST` | `127.0.0.1` | 监听地址 |
+| `GUANDAN_HOST` | `127.0.0.1` | 服务监听地址 |
 | `GUANDAN_PORT` | `3210` | 端口 |
-| `GUANDAN_DATA_DIR` | `data` | SQLite进度与动作回执目录，需持久保存 |
-| `GUANDAN_BOT_DELAY_MS` | `750` | 电脑思考展示间隔 |
-| `GUANDAN_GRACE_MS` | `20000` | 离线后等待多久转为电脑代打 |
+| `GUANDAN_DATA_DIR` | `data` | 需持久保存的牌局和回执目录 |
+| `GUANDAN_BOT_DELAY_MS` | `750` | 电脑操作展示间隔 |
+| `GUANDAN_GRACE_MS` | `20000` | 离线后转为代打的等待时间 |
 
-牌桌号只用于加入，座位凭据用于控制自己的手牌。请保留原浏览器的网站数据；不要把数据目录、日志、测试录屏或环境文件提交到仓库。默认不使用外部模型、分析SDK、广告或远程字体。
-
-清除网站数据，或刚建桌后浏览器立即崩溃导致新凭据未落盘，可能无法自动回到原座位；此时回首页重新加入。已有保存凭据的强制关闭与重开已测试，详见验收记录。
+共享服务需另行部署 HTTPS 和持久存储。公开仓库和 APK 下载地址不提供游戏服务，也不能让国内手机访问开发电脑 localhost。正式运营前须按实际主体与渠道核定适用要求。
 
 ## 验证
 
@@ -49,17 +66,12 @@ npm run test:simulation
 npm run test:browser
 ```
 
-首次运行浏览器测试先执行 `npx playwright install chromium`。如需独立下载目录，可设置 `PLAYWRIGHT_BROWSERS_PATH`；共享缓存环境建议设置 `PLAYWRIGHT_SKIP_BROWSER_GC=1`。测试数据和证据写入被Git忽略的 `.local/`。
+浏览器测试首次安装 `npx playwright install chromium`，共享缓存可设 `PLAYWRIGHT_SKIP_BROWSER_GC=1`。原生验收使用四个独立 Android 实例、原生控件层级、ADB 物理点击和整屏录像，入口 `npm run test:android`；前置环境见 [Android 验证](docs/android-testing.md)。真实结果与限制见[验收记录](docs/acceptance.md)及 [Mate 30 试用清单](docs/phone-check.md)。
 
-- 规则样例独立核对[本桌规则](docs/rules.md)，包含配牌、炸弹、A低端顺子、接风和贡还边界。
-- 服务检查通过真实HTTP、WebSocket及电脑worker验证权限、动作去重、重启恢复和写入失败回滚。
-- 浏览器检查通过各自独立的浏览器会话操作完整对局，不直接写入牌局状态。
-- [Android验证](docs/android-testing.md)使用四个独立AVD与实际浏览器；通用Android镜像不能替代Mate 30真机。
+旧 Android 浏览器录像曾被 Chrome 通知面板遮住，而后台 DOM 仍推进；该前台可玩结论已撤回，反例保留。原生验收须亲看整屏证据，不能以网页截图或录像字节数代替。
 
-`GUANDAN_TEST_CONTROL`与`GUANDAN_TEST_SEED`只供本机测试。普通启动不提供测试状态入口；测试能力启用时服务强制监听回环地址。真实对局发牌使用加密随机源，不能使用测试种子。
-
-本桌使用`gd-2022-home-v1`规则，具体线上约定见规则文档；它不宣称经过赛事认证。陌生人大厅、商城和实时语音不属于当前版本。
+测试数据、录屏、座位凭据、环境文件和签名材料不得提交。`GUANDAN_TEST_CONTROL` 与 `GUANDAN_TEST_SEED` 仅供回环测试；普通服务不开放测试入口，真实发牌使用加密随机源。
 
 ## License
 
-MIT © 2026 RulerCompass1729
+MIT © 2026 RulerCompass1729。原生依赖许可及源码出处见 [THIRD_PARTY_NOTICES.txt](android/app/src/main/assets/THIRD_PARTY_NOTICES.txt)，应用“关于与开源许可”也可查看。

@@ -1,53 +1,64 @@
-# Android验证
+# 原生 Android 验证
 
-更正：下述旧`mobile-test.mjs`为浏览器WebContext自动化。它曾在Chrome通知面板遮挡前台时仍让DOM牌局推进，因而不构成前台可操作验收。原始录像保留；新原生APK须用原生控件点击与ADB整屏截图/录像重验，不能拿WebContext截图或文件字节数代替。
+目标：安装同一个签名 APK，在独立系统里从原生按钮完成亲友同桌、电脑补位与恢复。脚本控制的是人类席位，不等于四位真人或长辈试用。通用 Android API33 ARM64 不等于华为 ROM，不能承诺“100%拟真”。
 
-目标是证明独立手机系统里的玩家共同参与同一桌。自动化操作的是人类玩家席位，不等于已经让四位真人试用；Mate 30实机、系统浏览器和国内网络另行验收。
+旧 `mobile-test.mjs` 的 WebContext 曾绕过遮挡前台的 Chrome 通知引导，原前台可玩结论撤回；旧录像保留为反例。新的 `native-test.mjs` 仅接受 `NATIVE_APP`，截图来自 ADB 整屏，不使用浏览器控件或 DOM 点击。
 
-## 环境
+## 构建 APK
 
-四个专用AVD使用各自用户数据、Android ID和浏览器存储。`tools/android_devices.py`只新建本项目的Guandan_A至D，不拷贝已有登录快照。默认使用Android API33 ARM64 Google APIs镜像；这不是华为ROM，也不证明无Google服务环境。
+Android Studio 打开 `android/`。验证使用 Android Studio 2025.3 随附 JDK21、SDK36.1、Build Tools36.1.0、AGP8.13.2 和 Gradle8.13；IDE图形界面导入未作为已验项目。其他环境先设置自己的 `JAVA_HOME` 和 Android SDK，`local.properties` 不提交。
+
+```sh
+android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+```
+
+Gradle 检查预编译练习规则与 TS 源指纹，源码变更后先运行 `npm ci && npm run build:android-engine`。JVM 差分测试使用 Node 生成的18个参考样例，并完整推进练习、重开进度、继续下一副；存储故障测试模拟先改 RAM 再返回写失败，不能用只抛异常的假存储替代。
+
+发行密钥保留私有。环境变量 `GUANDAN_KEYSTORE`、`GUANDAN_STORE_PASSWORD`、`GUANDAN_KEY_PASSWORD` 指定签名，别名 `rulercompass1729`；随后运行 `:app:assembleRelease :app:testReleaseUnitTest :app:lintRelease`，使用 `apksigner verify --verbose --print-certs` 核签名。发布前对最终 APK 和源码分别检查秘密、个人信息和版本。
+
+## 四个独立系统
+
+需要已安装 Android SDK 和 API33 ARM64 Google APIs 镜像。只新建本项目的 Guandan_A 至 D，不复制用户登录快照；各有独立磁盘和 Android ID。
 
 ```sh
 python3 tools/android_devices.py start
 python3 tools/android_devices.py status
-```
-
-需要已安装Android SDK及该系统镜像。工具从`ANDROID_SDK_ROOT`读取SDK，未设置时使用macOS常见SDK目录。更换镜像前应同步核对脚本配置与浏览器驱动，不靠AVD显示名称推断系统。
-
-安装Appium到本项目：
-
-```sh
 npm ci --prefix tools/mobile
+APPIUM_HOME="$PWD/.local/appium" tools/mobile/node_modules/.bin/appium driver install uiautomator2@8.7.3
 ```
 
-使用项目专用`APPIUM_HOME`安装与当前Appium兼容的UiAutomator2驱动，然后在本机回环地址启动Appium。本次验证使用Appium 3.9.0和UiAutomator2 8.7.3：
+启动本机 Appium，实际版本3.9.0；使用独立 `APPIUM_HOME` 和各设备独立 `udid`、`systemPort`。原生测试不需要 ChromeDriver 或其自动下载权限：
 
 ```sh
-APPIUM_HOME="$PWD/.local/appium" tools/mobile/node_modules/.bin/appium driver install uiautomator2@8.7.3
-APPIUM_HOME="$PWD/.local/appium" ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}" tools/mobile/node_modules/.bin/appium --address 127.0.0.1 --port 4723 --allow-insecure uiautomator2:chromedriver_autodownload
+APPIUM_HOME="$PWD/.local/appium" ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}" tools/mobile/node_modules/.bin/appium --address 127.0.0.1 --port 4723
 ```
 
-驱动版本必须匹配；各设备指定独立的`udid`、`systemPort`和`chromedriverPort`。ChromeDriver也必须与Android浏览器版本匹配。自动下载驱动只对本机测试Appium启用，不能把无鉴权的Appium暴露到外网。
-
-运行入口：
+另一个终端中：
 
 ```sh
 npm ci
 npm run build
-node tools/mobile-test.mjs
+npm run test:android
 ```
 
-入口将建立本次测试专用数据库、四条独立故障代理和本机牌桌服务，使用WebDriver的查找、输入、点击操作。JavaScript执行只用于读取UI状态、创建存储隔离标记和网络探针，不直接修改游戏状态或代替出牌点击。
+默认测试 `android/app/build/outputs/apk/release/app-release.apk`，`GUANDAN_APK` 可指定其他包。测试先复制不可变 APK，记录 SHA256；只在经过名称、PID、专用磁盘归属验证的四个客体中卸载/重装本应用。不要对个人手机或来源不明设备运行。
 
-## 检查内容
+## 原生流程与故障
 
-1. 同源存储标记只在A出现；四个Android ID和数据目录不同。
-2. 在专用可调试AVD内先证明健康探针可观测，再设置客体防火墙；只允许各自的游戏代理、回环和调试所需流量。验证自己的渠道可达、其他渠道不可达。脚本会先确认AVD名称，绝不修改宿主机防火墙。
-3. 1人3电脑、2人2电脑、3人1电脑、4人0电脑，每种组合经实际UI打完、共同结算并进入下一副；另补两名真人经界面换到对家座位的同队对局。原生Android三人配置覆盖真人0/1/2、电脑3，其他AI位置另由浏览器套件轮换；不声称原生端已穷尽所有座位布局。四人配置的正常对局不能出现隐藏电脑代打。
-4. 单独断开A的TCP通道，其余三端能继续观测；使用默认20秒等待后托管，A恢复原席并接回。另验单端延迟和真实服务进程重启。
-5. 连续跨副到过A；规则与AI逻辑另有固定样例和1,000副种子回归，不用模拟器数量替代正确性。
+测试使用自己的回环服务3212、四条代理3310—3313和独立数据库。座位凭据由每个 APK 自己生成保存；通过帮助菜单设置各端服务、建桌、输入桌号和入座。测试能力仅允许本机只读快照，不直接提交出牌或写牌局状态。
 
-本次专用AVD需要可调试镜像以设置客体网络规则；不能在不明设备上运行root或清理。测试可能保留浏览器、设备与数据库，结束后只关闭本项目记录的会话和进程。`python3 tools/android_devices.py stop`只针对本项目记录的模拟器。
+- 先以客体健康探针确认可观测，再限制各自的网络通道；记录 A 的存储标记在其他系统不存在。只改专用客体防火墙，清理时恢复自己创建的链，不改宿主机防火墙。
+- 1/2/3/4人工席位及两人同队，各经原生界面完整一副、共同结算并继续；三人默认覆盖AI3，不能声称全部座位排列都已在原生端遍历。
+- 用原生层级找唯一、可见且启用的目标，按密度核对48dp及完整屏内边界，再执行系统物理触摸。服务回执、动作ID和手牌变化与每次触摸对应；大字逐张取消、紧凑展开全部和取消均检查。
+- 正常四人局必须没有电脑出牌；之后单独断A通道，默认20秒后其他三端看见代打，A恢复原席并接回。另测真实服务重启保牌与单端延迟。
+- 服务接受出牌后丢确认，保留待确认动作，实际强制关闭 APK；离线冷启动显示只读旧桌，恢复网络后一次重试取得同ID重复回执并恢复连接，手牌只扣一次。
+- 四个有人类所有者的席位经按钮明确委托电脑，继续跨副到过A。这是托管赛程，不冒称全程四人手动比赛。
+- 牌型框打开后真实退到后台，等待托管更新，再回前台检查旧框关闭；另在关闭Google服务与Chrome、切断游戏通道的客体内运行完整本机练习，验证进程重开、布局记忆及系统字号130%。这不等于华为真机验证。
 
-证据保留在`.local/mobile-evidence/`，截图放个人Pictures目录的dogfood子目录，不进入Git。记录系统/浏览器/驱动版本、每步操作、服务事件、UI截图/视频和准确通过范围。证据不完整或资源不足记未验，不能记通过。
+`GUANDAN_NATIVE_MODES=1,2,3,4,team` 选择组合；`GUANDAN_NATIVE_EXTRAS=0` 可跳过后台牌型和离线附加检查，跳过必须单列，不能计通过。测试日志、原始回执和录屏保留 `.local/native-evidence/`；截图/UI dump在个人Pictures的dogfood目录。
+
+## 判定与收尾
+
+作者和独审均须亲看ADB整屏录像抽帧，核对真实牌面、手牌减少、布局切换和结算。文件存在、录像字节数、服务已推进、包名前台或WebContext截图都不足以单独放行。
+
+测试只关闭自己创建的会话、代理和服务，并恢复客体字体与被临时禁用的包。模拟器由 `python3 tools/android_devices.py stop` 关闭，停止前再次核对所有权；不杀共享ADB或个人设备。实际结果见[验收记录](acceptance.md)，真机后续见[Mate 30试用](phone-check.md)。
