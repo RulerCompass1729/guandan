@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { type Card, point, sorted } from './cards.js';
 import { RULE_VERSION, beats, classify, legalPlays, returnable } from './rules.js';
 import { RuleError, advance, assertConservation, move, newGame, prepareTribute, returnCard } from './game.js';
-import { decide, type Observation, type Decision } from './policy.js';
+import { decide, isDifficulty, type Observation, type Decision } from './policy.js';
 import { Bots } from './bots.js';
 import { Store } from './store.js';
 import type { Room, Seat, View, Action, Preview } from './model.js';
@@ -74,7 +74,7 @@ export class Rooms {
     const host = newSeat(displayName(name), token);
     const room: Room = { code, owner: host.playerId, seats: [host, null, null, null], version: 1,
       stage: 'waiting', createdAt: Date.now(), updatedAt: Date.now(), levels: [2, 2], activeTeam: 0,
-      round: 0, game: null, result: null, notice: '请邀请亲友，空位可以由电脑补齐' };
+      round: 0, game: null, result: null, difficulty: 'standard', notice: '请邀请亲友，空位可以由电脑补齐' };
     this.rooms.set(code, room);
     try { this.store.save(room); } catch (error) { this.rooms.delete(code); throw error; }
     return this.view(room, 0);
@@ -154,7 +154,7 @@ export class Rooms {
   }
   action(code: string, token: string, action: Action): { view: View | null; duplicate: boolean } {
     const { room, seat, player } = this.auth(code, token);
-    const hash = digest(JSON.stringify({ type: action.type, ids: action.ids, patternId: action.patternId, seat: action.seat, roundId: action.roundId }));
+    const hash = digest(JSON.stringify({ type: action.type, ids: action.ids, patternId: action.patternId, seat: action.seat, roundId: action.roundId, difficulty: action.difficulty }));
     const receipt = this.store.receipt(code, player.playerId, action.actionId);
     if (receipt) {
       if (receipt.hash !== hash) throw new RuleError('REUSED_ID', '操作标记已使用，请重新操作');
@@ -165,6 +165,12 @@ export class Rooms {
     try {
       const game = room.game;
       switch (action.type) {
+        case 'difficulty':
+          if (room.owner !== player.playerId) throw new RuleError('HOST', '请由房主调整电脑难度');
+          if (!['waiting', 'roundOver', 'matchOver'].includes(room.stage)) throw new RuleError('PHASE', '打完这一副后再调整难度');
+          if (!isDifficulty(action.difficulty)) throw new RuleError('INPUT', '请选择轻松、标准或进阶');
+          room.difficulty = action.difficulty;
+          room.notice = '电脑难度已调整'; break;
         case 'start':
           if (room.stage !== 'waiting' || room.owner !== player.playerId) throw new RuleError('START', '请由房主开始');
           this.begin(room); break;
@@ -240,6 +246,7 @@ export class Rooms {
     const positions = game?.result?.order ?? game?.finish ?? [];
     return {
       code: room.code, version: room.version, ruleVersion: RULE_VERSION, stage: room.stage, self,
+      difficulty: room.difficulty,
       host: room.seats.findIndex(s => s?.playerId === room.owner),
       seats: room.seats.map((s, index) => ({ index, name: s?.name ?? '等待亲友', kind: s?.kind ?? 'empty',
         connected: s?.connected ?? false, auto: s?.auto ?? false, count: game?.hands[index].length ?? 0,
@@ -272,7 +279,7 @@ export class Rooms {
     const epoch = player!.epoch, version = room.version;
     const observation: Observation = { seat, hand: structuredClone(game.hands[seat]), level: game.level,
       lead: game.last ? { seat: game.last.seat, pattern: structuredClone(game.last.pattern) } : null,
-      counts: game.hands.map(h => h.length), finished: [...game.finish], returning: room.stage === 'tribute' };
+      counts: game.hands.map(h => h.length), finished: [...game.finish], returning: room.stage === 'tribute', difficulty: room.difficulty };
     this.options.audit?.({ type: 'ai_input', room: room.code, seat, version, observation });
     let decision: Decision;
     try { decision = await this.bots.choose(key, observation); }

@@ -60,6 +60,11 @@ public final class MainActivity extends Activity {
     private EditText nickname, joinCode;
     private boolean landscape;
     private int widthDp;
+    private static final String[] DIFFICULTIES = { "easy", "standard", "advanced" };
+    private static final String[] DIFFICULTY_NAMES = { "轻松", "标准", "进阶" };
+    private int difficultyIndex(String value) { for (int i = 0; i < DIFFICULTIES.length; i++) if (DIFFICULTIES[i].equals(value)) return i; return 1; }
+    private String practiceDifficulty() { return DIFFICULTIES[difficultyIndex(display.getString("difficulty", "standard"))]; }
+    private String difficultyName(JSONObject view) { return DIFFICULTY_NAMES[difficultyIndex(view.optString("difficulty", "standard"))]; }
     private int cardHeight() { return Math.max(70, Math.round(48 * getResources().getConfiguration().fontScale + 10)); }
 
     @Override public void onCreate(Bundle state) {
@@ -212,8 +217,10 @@ public final class MainActivity extends Activity {
         join.addView(joinCode, new LinearLayout.LayoutParams(0, dp(54), 1));
         Button enter = button("入座", "join_room", false, () -> { hideKeyboard(); client.join(false, joinCode.getText().toString(), nickname.getText().toString().trim()); });
         enter.setEnabled(!client.busy()); addButton(join, enter, 100); marginAdd(page, join, 14);
-        Button practice = button("先和电脑练一局", "practice", false, () -> { hideKeyboard(); client.startPractice(nickname.getText().toString().trim()); });
+        Button practice = button("先和电脑练一局", "practice", false, () -> { hideKeyboard(); client.startPractice(nickname.getText().toString().trim(), practiceDifficulty()); });
         practice.setEnabled(!client.busy()); marginAdd(page, practice, 20);
+        Button difficulty = button("电脑难度：" + DIFFICULTY_NAMES[difficultyIndex(practiceDifficulty())], "difficulty_open", false, () -> difficultyDialog(true));
+        difficulty.setEnabled(!client.busy()); marginAdd(page, difficulty, 12);
         TextView note = text("练习无需联网。原座位保存在本机应用中，重开自动回桌。", 14, MUTED); marginAdd(page, note, 16);
         if (!client.message().isEmpty()) marginAdd(page, status(client.message()), 12);
     }
@@ -247,8 +254,9 @@ public final class MainActivity extends Activity {
             activityMessage = "桌号已复制，请发给亲友"; render();
         });
         Button exit = button("离开牌桌", "leave_open", false, this::leave);
-        if (landscape) { LinearLayout tools = row(); addButton(tools, copy, 0); addButton(tools, exit, 0); marginAdd(content, tools, 12); }
-        else marginAdd(content, copy, 14);
+        Button difficulty = button("电脑难度：" + difficultyName(v), "difficulty_open", false, () -> difficultyDialog(false));
+        if (landscape) { LinearLayout tools = row(); addButton(tools, copy, 0); addButton(tools, difficulty, 0); addButton(tools, exit, 0); marginAdd(content, tools, 12); }
+        else { marginAdd(content, copy, 14); marginAdd(content, difficulty, 10); }
         Button start = button("开始 · 空位电脑补齐", "start_game", true, () -> client.submit("start", null));
         start.setEnabled(v.getInt("host") == self && canSubmit()); marginAdd(content, start, 12);
         if (!landscape) marginAdd(content, exit, 10);
@@ -466,6 +474,7 @@ public final class MainActivity extends Activity {
         Button next = button(match ? "再来一场" : "继续下一副", "next_game", true, () -> client.submit(match ? "restart" : "next", null));
         next.setEnabled(v.getInt("host") == v.getInt("self") && canSubmit()); marginAdd(box, next, 20);
         if (v.getInt("host") != v.getInt("self")) marginAdd(box, text("等房主继续，大家会一起进入下一副。", 15, MUTED), 12);
+        marginAdd(box, button("电脑难度：" + difficultyName(v), "difficulty_open", false, () -> difficultyDialog(false)), 10);
         marginAdd(box, button("离开牌桌", "leave_open", false, this::leave), 10);
     }
     private void leave() {
@@ -478,7 +487,41 @@ public final class MainActivity extends Activity {
         dialog.show(); dialog.getButton(AlertDialog.BUTTON_POSITIVE).setId(R.id.leave_confirm);
     }
     private void menu() {
-        dialog("牌桌选项").setItems(new String[] { "玩法说明", "离开牌桌" }, (d, which) -> { if (which == 0) rules(); else leave(); }).setNegativeButton("返回", null).show();
+        dialog("牌桌选项").setItems(new String[] { "玩法说明", "电脑难度：" + difficultyName(client.view()), "离开牌桌" },
+            (d, which) -> { if (which == 0) rules(); else if (which == 1) difficultyDialog(false); else leave(); }).setNegativeButton("返回", null).show();
+    }
+    private void difficultyDialog(boolean home) {
+        JSONObject view = client.view();
+        if (!home && (view == null || !canSubmit())) return;
+        if (!home && (view.optInt("host") != view.optInt("self") || !java.util.Arrays.asList("waiting", "roundOver", "matchOver").contains(view.optString("stage")))) {
+            dialog("电脑难度：" + difficultyName(view)).setMessage(view.optInt("host") != view.optInt("self") ?
+                "本桌电脑使用同一档难度，由房主在开局前或两副之间调整。" : "这一副保持当前难度，打完后可以调整。")
+                .setPositiveButton("知道了", null).show(); return;
+        }
+        final int[] choice = { difficultyIndex(home ? practiceDifficulty() : view.optString("difficulty", "standard")) };
+        final int version = view == null ? -1 : view.optInt("version");
+        final String code = view == null ? "" : view.optString("code"), round = view == null ? "" : view.optString("roundId"), stage = view == null ? "" : view.optString("stage");
+        final int self = view == null ? -1 : view.optInt("self");
+        AlertDialog picker = dialog("电脑难度").setSingleChoiceItems(new String[] {
+            "轻松\n优先简单出牌，适合熟悉操作", "标准\n出牌与配合比较均衡", "进阶\n更注意保留组合、拦截与收尾"
+        }, choice[0], (d, which) -> choice[0] = which).setNegativeButton("取消", null).setPositiveButton("确定", null).create();
+        picker.show(); picker.getButton(AlertDialog.BUTTON_POSITIVE).setId(R.id.difficulty_confirm);
+        picker.getButton(AlertDialog.BUTTON_NEGATIVE).setId(R.id.difficulty_cancel);
+        picker.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(button -> {
+            if (home) {
+                try { DurablePreferences.commit(display, display.edit().putString("difficulty", DIFFICULTIES[choice[0]])); }
+                catch (java.io.IOException error) { activityMessage = "难度未能保存，请再试一次"; picker.dismiss(); render(); return; }
+                picker.dismiss(); render();
+            } else {
+                JSONObject current = client.view();
+                if (current == null || current.optInt("version") != version || !code.equals(current.optString("code")) ||
+                    !round.equals(current.optString("roundId")) || !stage.equals(current.optString("stage")) ||
+                    current.optInt("self") != self || current.optInt("host") != self || !canSubmit()) {
+                    picker.dismiss(); activityMessage = "牌桌已更新，请重新选择难度"; render(); return;
+                }
+                picker.dismiss(); client.submit("difficulty", fields("difficulty", DIFFICULTIES[choice[0]]));
+            }
+        });
     }
     private void homeHelp() {
         dialog("帮助").setItems(new String[] { "玩法说明", "设置亲友联机服务", "关于与开源许可" }, (d, which) -> {

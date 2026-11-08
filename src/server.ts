@@ -9,8 +9,9 @@ import { RULE_VERSION } from './rules.js';
 import { Rooms, validateToken, type RoomOptions } from './rooms.js';
 import { Store } from './store.js';
 import type { Action, ActionType, Room } from './model.js';
+import { isDifficulty } from './policy.js';
 
-const ACTIONS: ActionType[] = ['start', 'next', 'restart', 'play', 'pass', 'return', 'auto', 'resume', 'switch', 'leave'];
+const ACTIONS: ActionType[] = ['start', 'next', 'restart', 'play', 'pass', 'return', 'auto', 'resume', 'switch', 'leave', 'difficulty'];
 function parseAction(value: unknown): Action {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RuleError('INPUT', '操作格式不对');
   const x = value as Record<string, unknown>;
@@ -19,8 +20,10 @@ function parseAction(value: unknown): Action {
   if (x.patternId !== undefined && (typeof x.patternId !== 'string' || x.patternId.length > 60)) throw new RuleError('INPUT', '牌型格式不对');
   if (x.seat !== undefined && (!Number.isInteger(x.seat) || (x.seat as number) < 0 || (x.seat as number) > 3)) throw new RuleError('INPUT', '座位格式不对');
   if (x.roundId !== undefined && x.roundId !== null && (typeof x.roundId !== 'string' || x.roundId.length > 80)) throw new RuleError('INPUT', '牌局标记不对');
+  if (x.type === 'difficulty' && !isDifficulty(x.difficulty)) throw new RuleError('INPUT', '请选择轻松、标准或进阶');
   return { type: x.type as ActionType, actionId: x.actionId, expectedVersion: x.expectedVersion as number,
-    ids: x.ids as number[] | undefined, patternId: x.patternId as string | undefined, seat: x.seat as number | undefined, roundId: x.roundId as string | null | undefined };
+    ids: x.ids as number[] | undefined, patternId: x.patternId as string | undefined, seat: x.seat as number | undefined, roundId: x.roundId as string | null | undefined,
+    ...(x.type === 'difficulty' ? { difficulty: x.difficulty as Action['difficulty'] } : {}) };
 }
 function authToken(req: IncomingMessage): string {
   const value = req.headers.authorization;

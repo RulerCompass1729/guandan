@@ -37,8 +37,9 @@ public class PracticeEngineTest {
         }
     }
     @Test public void practiceRoundCompletesAndStateReopensWithoutChangingAHand() throws Exception {
+      for (String difficulty : new String[] { "easy", "standard", "advanced" }) {
         PracticeEngine engine = engine();
-        JsonObject result = request(engine, object("op", "new", "testSeed", 1729, "name", "牌友甲"));
+        JsonObject result = request(engine, object("op", "new", "testSeed", 1729, "name", "牌友甲", "difficulty", difficulty));
         for (int step = 0; step < 300 && !result.getAsJsonObject("state").get("stage").getAsString().equals("roundOver"); step++) {
             JsonObject state = result.getAsJsonObject("state");
             if (result.get("needsBot").getAsBoolean()) result = request(engine, object("op", "tick", "state", state));
@@ -54,8 +55,14 @@ public class PracticeEngineTest {
         JsonObject state = result.getAsJsonObject("state");
         JsonObject reopened = request(engine(), object("op", "view", "state", state));
         assertEquals(result.get("view"), reopened.get("view"));
+        assertEquals(difficulty, reopened.getAsJsonObject("view").get("difficulty").getAsString());
+        JsonObject changed = request(engine, object("op", "action", "state", state, "action",
+            object("type", "difficulty", "difficulty", "advanced", "expectedVersion", state.get("version"))));
+        state = changed.getAsJsonObject("state");
         JsonObject next = request(engine, object("op", "action", "state", state, "action",
             object("type", "next", "expectedVersion", state.get("version"), "actionId", "next-practice-action")));
         assertEquals(2, next.getAsJsonObject("view").get("round").getAsInt());
+        assertEquals("advanced", next.getAsJsonObject("view").get("difficulty").getAsString());
+      }
     }
 }

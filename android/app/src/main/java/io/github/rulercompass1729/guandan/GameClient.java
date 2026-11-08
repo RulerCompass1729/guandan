@@ -149,12 +149,12 @@ public final class GameClient {
             finally { busy = false; notifyChanged(); }
         });
     }
-    public void startPractice(String nickname) {
+    public void startPractice(String nickname, String difficulty) {
         if (busy) return;
         busy = true; notifyChanged();
         executor.execute(() -> {
             try {
-                JSONObject input = new JSONObject().put("op", "new").put("name", nickname);
+                JSONObject input = new JSONObject().put("op", "new").put("name", nickname).put("difficulty", difficulty);
                 JSONObject response = localEngine(input);
                 String serialized = response.getJSONObject("state").toString();
                 persist(prefs.edit().putString("mode", "practice").putString("name", nickname).putString("practiceState", serialized).remove("pending"));

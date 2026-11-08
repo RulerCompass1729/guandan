@@ -2,13 +2,14 @@
 import { seeded, sorted, type Card } from './cards.js';
 import { newGame, move, prepareTribute, returnCard, advance, assertConservation, RuleError, type Game } from './game.js';
 import { RULE_VERSION, classify, beats, legalPlays, returnable } from './rules.js';
-import { decide, type Decision } from './policy.js';
+import { decide, difficulty, isDifficulty, type Decision, type Difficulty } from './policy.js';
 import type { Action, View, Result, Stage, Preview } from './model.js';
 
 interface LocalState {
   version: number; stage: Stage; name: string; auto: boolean; round: number;
   levels: number[]; activeTeam: number; game: Game; result: Result | null;
   notice: string; testSeed?: number;
+  difficulty: Difficulty;
 }
 function startRound(state: LocalState): void {
   const random = state.testSeed === undefined ? Math.random : seeded(state.testSeed + state.round);
@@ -32,6 +33,7 @@ function finish(state: LocalState): void {
 function view(state: LocalState): View {
   const g = state.game, positions = g.result?.order ?? g.finish;
   return { code: '本机练习', version: state.version, ruleVersion: RULE_VERSION, stage: state.stage, self: 0, host: 0,
+    difficulty: state.difficulty,
     seats: [0, 1, 2, 3].map(index => ({ index, name: index === 0 ? state.name : '电脑' + (index + 1),
       kind: index === 0 ? 'human' : 'ai', connected: true, auto: index === 0 ? state.auto : false,
       count: g.hands[index].length, finish: positions.includes(index) ? g.result?.doubleDown && positions.indexOf(index) >= 2 ? 5 : positions.indexOf(index) + 1 : null })),
@@ -44,7 +46,7 @@ function view(state: LocalState): View {
 function observation(state: LocalState, seat: number, returning: boolean) {
   const g = state.game;
   return { seat, hand: g.hands[seat], level: g.level, lead: g.last ? { seat: g.last.seat, pattern: g.last.pattern } : null,
-    counts: g.hands.map(h => h.length), finished: g.finish, returning };
+    counts: g.hands.map(h => h.length), finished: g.finish, returning, difficulty: state.difficulty };
 }
 function needsBot(state: LocalState): number | null {
   if (state.stage === 'tribute') return state.game.tribute!.entries.find(e => !e.returned && (e.receiver !== 0 || state.auto))?.receiver ?? null;
@@ -54,7 +56,11 @@ function needsBot(state: LocalState): number | null {
 function action(state: LocalState, a: Action): void {
   if (a.expectedVersion !== state.version) throw new RuleError('STALE', '牌桌已经更新，请重新操作');
   if (a.roundId && a.roundId !== state.game.roundId) throw new RuleError('STALE', '已经是新一副牌');
-  if (a.type === 'auto' || a.type === 'resume') state.auto = a.type === 'auto';
+  if (a.type === 'difficulty') {
+    if (!['roundOver', 'matchOver'].includes(state.stage)) throw new RuleError('PHASE', '打完这一副后再调整难度');
+    if (!isDifficulty(a.difficulty)) throw new RuleError('INPUT', '请选择轻松、标准或进阶');
+    state.difficulty = a.difficulty; state.notice = '电脑难度已调整';
+  } else if (a.type === 'auto' || a.type === 'resume') state.auto = a.type === 'auto';
   else if (a.type === 'next' || a.type === 'restart') {
     if (a.type === 'next' && state.stage !== 'roundOver' || a.type === 'restart' && state.stage !== 'matchOver') throw new RuleError('PHASE', '请先打完这一副');
     if (a.type === 'restart') { state.levels = [2, 2]; state.activeTeam = 0; state.round = 0; state.result = null; }
@@ -76,7 +82,7 @@ function hint(state: LocalState, cursor: number): Decision & { total: number } {
     const options = returnable(g.hands[0], g.level); return { ids: [options[cursor % options.length].id], total: options.length };
   }
   if (state.stage !== 'playing' || g.turn !== 0) throw new RuleError('TURN', '还没轮到你，请稍等');
-  const options = legalPlays(g.hands[0], g.level, g.last?.pattern ?? null), preferred = decide(observation(state, 0, false));
+  const options = legalPlays(g.hands[0], g.level, g.last?.pattern ?? null), preferred = decide({ ...observation(state, 0, false), difficulty: 'standard' });
   const preferredOption = (p: typeof options[number]) => p.pattern.id === preferred.patternId && p.cards.length === preferred.ids?.length && p.cards.every(c => preferred.ids!.includes(c.id));
   options.sort((a, b) => Number(preferredOption(b)) - Number(preferredOption(a)));
   const selected = options[cursor % options.length];
@@ -97,12 +103,14 @@ export function dispatch(json: string): string {
     let state: LocalState = input.state;
     if (input.op === 'new') {
       state = { version: 1, stage: 'playing', name: String(input.name || '牌友').slice(0, 14), auto: false,
-        round: 1, levels: [2, 2], activeTeam: 0, game: null as unknown as Game, result: null, notice: '' };
+        round: 1, levels: [2, 2], activeTeam: 0, game: null as unknown as Game, result: null, notice: '', difficulty: difficulty(input.difficulty) };
+      if (input.difficulty !== undefined && !isDifficulty(input.difficulty)) throw new RuleError('INPUT', '请选择轻松、标准或进阶');
       if (Number.isSafeInteger(input.testSeed)) state.testSeed = input.testSeed;
       startRound(state);
     } else {
       if (!state?.game || state.game.hands?.length !== 4 || !Number.isSafeInteger(state.version)) throw new RuleError('STATE', '练习进度不完整，请重新开始');
       assertConservation(state.game);
+      state.difficulty = difficulty(state.difficulty);
       if (input.op === 'action') action(state, input.action);
       else if (input.op === 'tick') {
         const seat = needsBot(state);

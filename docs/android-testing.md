@@ -12,7 +12,7 @@ Android Studio 打开 `android/`。验证使用 Android Studio 2025.3 随附 JDK
 android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-Gradle 检查预编译练习规则与 TS 源指纹，源码变更后先运行 `npm ci && npm run build:android-engine`。JVM 差分测试使用 Node 生成的18个参考样例，并完整推进练习、重开进度、继续下一副；存储故障测试模拟先改 RAM 再返回写失败，不能用只抛异常的假存储替代。
+Gradle 检查预编译练习规则与 TS 源指纹，源码变更后先运行 `npm ci && npm run build:android-engine`。JVM 差分测试使用 Node 生成的54个参考样例，覆盖三档电脑难度，并分别完整推进练习、重开进度、改难度后继续下一副；存储故障测试模拟先改 RAM 再返回写失败，不能用只抛异常的假存储替代。
 
 发行密钥保留私有。环境变量 `GUANDAN_KEYSTORE`、`GUANDAN_STORE_PASSWORD`、`GUANDAN_KEY_PASSWORD` 指定签名，别名 `rulercompass1729`；随后运行 `:app:assembleRelease :app:testReleaseUnitTest :app:lintRelease`，使用 `apksigner verify --verbose --print-certs` 核签名。发布前对最终 APK 和源码分别检查秘密、个人信息和版本。
 
@@ -56,6 +56,8 @@ npm run test:android
 - 牌型框打开后真实退到后台，等待托管更新，再回前台检查旧框关闭；另在关闭Google服务与Chrome、切断游戏通道的客体内运行完整本机练习，验证进程重开、布局记忆及系统字号130%。这不等于华为真机验证。
 
 `GUANDAN_NATIVE_MODES=1,2,3,4,team` 选择组合；`GUANDAN_NATIVE_EXTRAS=0` 可跳过后台牌型和离线附加检查，跳过必须单列，不能计通过。测试日志、原始回执和录屏保留 `.local/native-evidence/`；截图/UI dump在个人Pictures的dogfood目录。
+
+难度与升级的补充入口：`node tools/native-difficulty-test.mjs`，使用同四台专用客体和独立回环服务3310。先将0.2.0包放在`.local/release/guandan-0.2.0.apk`，或用`GUANDAN_OLD_APK`指定。它检查同签名覆盖更新保留手牌/当前副/排列、三档练习及冷启、四端共享难度与服务重启、两人加两电脑完成一副及副间调整。人类出牌须等服务持久回执，按动作ID去重；本机练习须比较持久化的手牌、版本与AI推进。多行选择文字先完整解码XML，等目标矩形连续稳定后再系统点击。此入口清除的仅是经过所有权验证的专用客体内本应用数据，不应对个人设备运行。
 
 ## 判定与收尾
 

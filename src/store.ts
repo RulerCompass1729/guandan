@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync, openSync, closeSync, chmodSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Room } from './model.js';
+import { difficulty } from './policy.js';
 
 export interface Receipt { room: string; player: string; id: string; hash: string; version: number; }
 export class Store {
@@ -21,6 +22,7 @@ export class Store {
   load(): Room[] {
     return (this.db.prepare('SELECT state FROM rooms').all() as { state: string }[]).map(row => {
       const room: Room = JSON.parse(row.state);
+      room.difficulty = difficulty(room.difficulty);
       room.seats.forEach(s => { if (s) s.connected = false; });
       return room;
     });

@@ -5,6 +5,9 @@
     <item type="id" name="join_code"/>
     <item type="id" name="join_room"/>
     <item type="id" name="practice"/>
+    <item type="id" name="difficulty_open"/>
+    <item type="id" name="difficulty_confirm"/>
+    <item type="id" name="difficulty_cancel"/>
     <item type="id" name="start_game"/>
     <item type="id" name="next_game"/>
     <item type="id" name="play"/>

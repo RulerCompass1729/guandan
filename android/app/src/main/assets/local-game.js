@@ -1,5 +1,5 @@
 // Generated from shared rules; run node tools/build-native-engine.mjs
-// source-sha256: c797c8dfee0b8b73441b599322ea21351cbe7e1c552e603166a8b03ade199abf
+// source-sha256: 6fe3e0c0ee37fbf3727dbe630ab9178dcf88333ec373d9e25604389ca248d0a0
 "use strict";
 var GuandanOffline = (function() {
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -946,10 +946,153 @@ var GuandanOffline = (function() {
   var require_policy = __commonJS({
     ".local/native-engine-compiled/policy.js": function(exports) {
       "use strict";
+      var __values = exports && exports.__values || function(o) {
+        var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+        if (m) return m.call(o);
+        if (o && typeof o.length === "number") return {
+          next: function() {
+            if (o && i >= o.length) o = void 0;
+            return { value: o && o[i++], done: !o };
+          }
+        };
+        throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+      };
+      var __read = exports && exports.__read || function(o, n) {
+        var m = typeof Symbol === "function" && o[Symbol.iterator];
+        if (!m) return o;
+        var i = m.call(o), r, ar = [], e;
+        try {
+          while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+        } catch (error) {
+          e = { error: error };
+        } finally {
+          try {
+            if (r && !r.done && (m = i["return"])) m.call(i);
+          } finally {
+            if (e) throw e.error;
+          }
+        }
+        return ar;
+      };
       Object.defineProperty(exports, "__esModule", { value: true });
+      exports.isDifficulty = isDifficulty;
+      exports.difficulty = difficulty;
       exports.decide = decide;
       var cards_js_1 = require_cards();
       var rules_js_1 = require_rules();
+      function isDifficulty(value) {
+        return value === "easy" || value === "standard" || value === "advanced";
+      }
+      function difficulty(value) {
+        return isDifficulty(value) ? value : "standard";
+      }
+      function remainingCost(hand) {
+        var e_1, _a;
+        var original = Array(18).fill(0);
+        try {
+          for (var hand_1 = __values(hand), hand_1_1 = hand_1.next(); !hand_1_1.done; hand_1_1 = hand_1.next()) {
+            var card = hand_1_1.value;
+            original[card.rank]++;
+          }
+        } catch (e_1_1) {
+          e_1 = { error: e_1_1 };
+        } finally {
+          try {
+            if (hand_1_1 && !hand_1_1.done && (_a = hand_1.return)) _a.call(hand_1);
+          } finally {
+            if (e_1) throw e_1.error;
+          }
+        }
+        var best = Infinity;
+        var _loop_1 = function(order2) {
+          var e_2, _b;
+          var counts = original.slice();
+          var turns = 0;
+          var groups = function() {
+            for (var rank2 = 2; rank2 <= 14; rank2++)
+              if (counts[rank2] >= 4) {
+                counts[rank2] = 0;
+                turns++;
+              }
+          };
+          if (counts[16] === 2 && counts[17] === 2) {
+            counts[16] = counts[17] = 0;
+            turns++;
+          }
+          if (order2 === 1)
+            groups();
+          var _loop_2 = function(width2, size2) {
+            var _loop_4 = function(start2) {
+              var e_3, _f;
+              var ranks = Array.from({ length: width2 }, function(_, i) {
+                return start2 + i === 1 ? 14 : start2 + i;
+              });
+              while (ranks.every(function(rank3) {
+                return counts[rank3] >= size2;
+              })) {
+                try {
+                  for (var ranks_1 = (e_3 = void 0, __values(ranks)), ranks_1_1 = ranks_1.next(); !ranks_1_1.done; ranks_1_1 = ranks_1.next()) {
+                    var rank2 = ranks_1_1.value;
+                    counts[rank2] -= size2;
+                  }
+                } catch (e_3_1) {
+                  e_3 = { error: e_3_1 };
+                } finally {
+                  try {
+                    if (ranks_1_1 && !ranks_1_1.done && (_f = ranks_1.return)) _f.call(ranks_1);
+                  } finally {
+                    if (e_3) throw e_3.error;
+                  }
+                }
+                turns++;
+              }
+            };
+            for (var start = 1; start <= 15 - width2; start++) {
+              _loop_4(start);
+            }
+          };
+          try {
+            for (var _c = (e_2 = void 0, __values([[2, 3], [3, 2], [5, 1]])), _d = _c.next(); !_d.done; _d = _c.next()) {
+              var _e = __read(_d.value, 2), width = _e[0], size = _e[1];
+              _loop_2(width, size);
+            }
+          } catch (e_2_1) {
+            e_2 = { error: e_2_1 };
+          } finally {
+            try {
+              if (_d && !_d.done && (_b = _c.return)) _b.call(_c);
+            } finally {
+              if (e_2) throw e_2.error;
+            }
+          }
+          if (order2 === 0)
+            groups();
+          var _loop_3 = function(rank2) {
+            while (counts[rank2] >= 3) {
+              counts[rank2] -= 3;
+              turns++;
+              var pair = counts.findIndex(function(count, r) {
+                return r >= 2 && r !== rank2 && count >= 2;
+              });
+              if (pair >= 0)
+                counts[pair] -= 2;
+            }
+          };
+          for (var rank = 2; rank <= 14; rank++) {
+            _loop_3(rank);
+          }
+          for (var rank = 2; rank <= 17; rank++)
+            turns += Math.ceil(counts[rank] / 2);
+          var smallSingles = counts.reduce(function(n, count, rank2) {
+            return n + (rank2 >= 2 && rank2 <= 10 && count % 2 === 1 ? 1 : 0);
+          }, 0);
+          best = Math.min(best, turns * 12 + smallSingles * 2);
+        };
+        for (var order = 0; order < 2; order++) {
+          _loop_1(order);
+        }
+        return best;
+      }
       function decide(obs) {
         var _a, _b;
         if (obs.returning)
@@ -967,22 +1110,36 @@ var GuandanOffline = (function() {
         var mateLeading = obs.lead && obs.lead.seat % 2 === obs.seat % 2;
         if (mateLeading)
           return { ids: null };
+        var mode = difficulty(obs.difficulty);
+        if (mode === "easy") {
+          options.sort(function(a, b) {
+            return (0, rules_js_1.tier)(a.pattern) - (0, rules_js_1.tier)(b.pattern) || a.pattern.high - b.pattern.high || a.cards.length - b.cards.length || a.cards.map(function(c) {
+              return c.id;
+            }).join(",").localeCompare(b.cards.map(function(c) {
+              return c.id;
+            }).join(","));
+          });
+          var play = options[0];
+          return { ids: play.cards.map(function(c) {
+            return c.id;
+          }), patternId: play.pattern.id };
+        }
         var danger = obs.counts.some(function(n, seat) {
           return seat % 2 !== obs.seat % 2 && n > 0 && n <= 2;
         });
-        var score = function(play) {
+        var score = function(play2) {
           var _a2;
-          var bomb = (0, rules_js_1.tier)(play.pattern) > 0;
-          var value = play.cards.length * (obs.lead ? 4 : 9) - play.pattern.high * 0.7 - (bomb ? 70 : 0);
-          value -= play.cards.filter(function(c) {
+          var bomb = (0, rules_js_1.tier)(play2.pattern) > 0;
+          var value = play2.cards.length * (obs.lead ? 4 : 9) - play2.pattern.high * 0.7 - (bomb ? 70 : 0);
+          value -= play2.cards.filter(function(c) {
             return (0, cards_js_1.wild)(c, obs.level);
           }).length * 10;
           if (danger && ((_a2 = obs.lead) === null || _a2 === void 0 ? void 0 : _a2.pattern.kind) === "single")
-            value += play.pattern.high * 2;
-          if (obs.hand.length - play.cards.length <= 2)
+            value += play2.pattern.high * 2;
+          if (obs.hand.length - play2.cards.length <= 2)
             value += 20;
-          if (play.cards.length === 1) {
-            var c_1 = play.cards[0];
+          if (play2.cards.length === 1) {
+            var c_1 = play2.cards[0];
             var groupSize = obs.hand.filter(function(x) {
               return (0, cards_js_1.point)(x.rank, obs.level) === (0, cards_js_1.point)(c_1.rank, obs.level);
             }).length;
@@ -991,13 +1148,36 @@ var GuandanOffline = (function() {
           }
           return value;
         };
-        options.sort(function(a, b) {
-          return score(b) - score(a) || a.cards.map(function(c) {
+        var advancedScore = function(play2) {
+          var used = new Set(play2.cards.map(function(c) {
             return c.id;
-          }).join(",").localeCompare(b.cards.map(function(c) {
+          })), rest = obs.hand.filter(function(c) {
+            return !used.has(c.id);
+          });
+          var bomb = (0, rules_js_1.tier)(play2.pattern) > 0;
+          var value = -remainingCost(rest) - play2.pattern.high * 0.35;
+          value -= play2.cards.filter(function(c) {
+            return (0, cards_js_1.wild)(c, obs.level);
+          }).length * 5;
+          if (bomb && rest.length > 2)
+            value -= danger ? 4 : 18;
+          if (danger && obs.lead && !bomb && ["single", "pair"].includes(obs.lead.pattern.kind))
+            value += play2.pattern.high * 2;
+          if (!obs.lead && danger && play2.cards.length <= 2)
+            value -= 15;
+          return value;
+        };
+        var ranked = options.map(function(play2) {
+          return { play: play2, value: mode === "advanced" ? advancedScore(play2) : score(play2) };
+        });
+        ranked.sort(function(a, b) {
+          return b.value - a.value || a.play.cards.map(function(c) {
+            return c.id;
+          }).join(",").localeCompare(b.play.cards.map(function(c) {
             return c.id;
           }).join(","));
         });
+        options[0] = ranked[0].play;
         return { ids: options[0].cards.map(function(c) {
           return c.id;
         }), patternId: options[0].pattern.id };
@@ -1086,6 +1266,7 @@ var GuandanOffline = (function() {
           stage: state.stage,
           self: 0,
           host: 0,
+          difficulty: state.difficulty,
           seats: [0, 1, 2, 3].map(function(index) {
             var _a2;
             return {
@@ -1129,7 +1310,8 @@ var GuandanOffline = (function() {
             return h.length;
           }),
           finished: g.finish,
-          returning: returning
+          returning: returning,
+          difficulty: state.difficulty
         };
       }
       function needsBot(state) {
@@ -1148,7 +1330,14 @@ var GuandanOffline = (function() {
           throw new game_js_1.RuleError("STALE", "\u724C\u684C\u5DF2\u7ECF\u66F4\u65B0\uFF0C\u8BF7\u91CD\u65B0\u64CD\u4F5C");
         if (a.roundId && a.roundId !== state.game.roundId)
           throw new game_js_1.RuleError("STALE", "\u5DF2\u7ECF\u662F\u65B0\u4E00\u526F\u724C");
-        if (a.type === "auto" || a.type === "resume")
+        if (a.type === "difficulty") {
+          if (!["roundOver", "matchOver"].includes(state.stage))
+            throw new game_js_1.RuleError("PHASE", "\u6253\u5B8C\u8FD9\u4E00\u526F\u540E\u518D\u8C03\u6574\u96BE\u5EA6");
+          if (!(0, policy_js_1.isDifficulty)(a.difficulty))
+            throw new game_js_1.RuleError("INPUT", "\u8BF7\u9009\u62E9\u8F7B\u677E\u3001\u6807\u51C6\u6216\u8FDB\u9636");
+          state.difficulty = a.difficulty;
+          state.notice = "\u7535\u8111\u96BE\u5EA6\u5DF2\u8C03\u6574";
+        } else if (a.type === "auto" || a.type === "resume")
           state.auto = a.type === "auto";
         else if (a.type === "next" || a.type === "restart") {
           if (a.type === "next" && state.stage !== "roundOver" || a.type === "restart" && state.stage !== "matchOver")
@@ -1189,7 +1378,7 @@ var GuandanOffline = (function() {
         }
         if (state.stage !== "playing" || g.turn !== 0)
           throw new game_js_1.RuleError("TURN", "\u8FD8\u6CA1\u8F6E\u5230\u4F60\uFF0C\u8BF7\u7A0D\u7B49");
-        var options = (0, rules_js_1.legalPlays)(g.hands[0], g.level, (_c = (_b = g.last) === null || _b === void 0 ? void 0 : _b.pattern) !== null && _c !== void 0 ? _c : null), preferred = (0, policy_js_1.decide)(observation(state, 0, false));
+        var options = (0, rules_js_1.legalPlays)(g.hands[0], g.level, (_c = (_b = g.last) === null || _b === void 0 ? void 0 : _b.pattern) !== null && _c !== void 0 ? _c : null), preferred = (0, policy_js_1.decide)(__assign(__assign({}, observation(state, 0, false)), { difficulty: "standard" }));
         var preferredOption = function(p) {
           var _a2;
           return p.pattern.id === preferred.patternId && p.cards.length === ((_a2 = preferred.ids) === null || _a2 === void 0 ? void 0 : _a2.length) && p.cards.every(function(c) {
@@ -1239,8 +1428,11 @@ var GuandanOffline = (function() {
               activeTeam: 0,
               game: null,
               result: null,
-              notice: ""
+              notice: "",
+              difficulty: (0, policy_js_1.difficulty)(input.difficulty)
             };
+            if (input.difficulty !== void 0 && !(0, policy_js_1.isDifficulty)(input.difficulty))
+              throw new game_js_1.RuleError("INPUT", "\u8BF7\u9009\u62E9\u8F7B\u677E\u3001\u6807\u51C6\u6216\u8FDB\u9636");
             if (Number.isSafeInteger(input.testSeed))
               state.testSeed = input.testSeed;
             startRound(state);
@@ -1248,6 +1440,7 @@ var GuandanOffline = (function() {
             if (!(state === null || state === void 0 ? void 0 : state.game) || ((_a = state.game.hands) === null || _a === void 0 ? void 0 : _a.length) !== 4 || !Number.isSafeInteger(state.version))
               throw new game_js_1.RuleError("STATE", "\u7EC3\u4E60\u8FDB\u5EA6\u4E0D\u5B8C\u6574\uFF0C\u8BF7\u91CD\u65B0\u5F00\u59CB");
             (0, game_js_1.assertConservation)(state.game);
+            state.difficulty = (0, policy_js_1.difficulty)(state.difficulty);
             if (input.op === "action")
               action(state, input.action);
             else if (input.op === "tick") {

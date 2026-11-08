@@ -122,7 +122,9 @@ entry=next(x for x in entries if x['serial']==sys.argv[1]);assert m.check_owned(
   source() { return this.command('GET', '/source'); }
   async observe() {
     const source = await this.source();
-    const decode = value => value.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+    const decode = value => value.replace(/&#(x[0-9a-f]+|[0-9]+);/gi, (_, number) =>
+      String.fromCodePoint(number[0].toLowerCase() === 'x' ? parseInt(number.slice(1), 16) : Number(number)))
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
     const nodes = [...source.matchAll(/<([\w.$]+)\s+([^>]+)>/g)].filter(match => match[1] !== 'hierarchy').map(match => {
       const attrs = Object.fromEntries([...match[2].matchAll(/([\w:-]+)="([^"]*)"/g)].map(x => [x[1], decode(x[2])]));
       const b = attrs.bounds?.match(/^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/);

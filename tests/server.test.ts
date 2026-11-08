@@ -137,13 +137,60 @@ test('AI uses actual worker and accepted actions match restricted observations',
   await until(() => trace.some(e => e.type === 'ai_accepted'));
   const input = trace.find(e => e.type === 'ai_input')!;
   const obs = input.observation as Observation;
-  assert.deepEqual(Object.keys(obs).sort(), ['counts', 'finished', 'hand', 'lead', 'level', 'returning', 'seat']);
+  assert.deepEqual(Object.keys(obs).sort(), ['counts', 'difficulty', 'finished', 'hand', 'lead', 'level', 'returning', 'seat']);
+  assert.equal(obs.difficulty, 'standard');
   assert.equal(obs.hand.length, 27); assert.equal('hands' in obs, false);
   const accepted = trace.find(e => e.type === 'ai_accepted')!;
   assert.equal(accepted.inputVersion, input.version); assert.equal(accepted.seat, input.seat);
   const decision = accepted.decision as Decision;
   assert.ok(decision.ids?.every(id => obs.hand.some(c => c.id === id)));
   assert.ok((await env.session(credential)).seats.some(s => s.kind === 'ai' && s.count < 27));
+});
+test('host difficulty is shared, durable and receipt-bound; guests and live-round changes are rejected', async t => {
+  const env = await setup(t), host = token(), guest = token();
+  const created = await env.create(host);
+  assert.equal(created.difficulty, 'standard');
+  await env.call(`/api/rooms/${created.code}/join`, guest, { name: '亲友' });
+  assert.equal((await env.act(guest, 'difficulty', { difficulty: 'advanced' })).status, 400);
+  assert.equal((await env.session(host)).difficulty, 'standard');
+  for (const mode of ['easy', 'standard', 'advanced'] as const) {
+    const current = await env.session(host);
+    const action = { type: 'difficulty', difficulty: mode, actionId: randomUUID(), expectedVersion: current.version, roundId: current.roundId };
+    const changed = await env.call(`/api/rooms/${created.code}/action`, host, action);
+    assert.equal(changed.status, 200);
+    assert.equal((await env.session(guest)).difficulty, mode);
+    const retried = await env.call(`/api/rooms/${created.code}/action`, host, action);
+    assert.equal(retried.data.duplicate, true);
+    const reused = await env.call(`/api/rooms/${created.code}/action`, host, { ...action, difficulty: mode === 'easy' ? 'advanced' : 'easy' });
+    assert.equal(reused.status, 400);
+  }
+  const before = await env.session(host);
+  const malformed = await env.call(`/api/rooms/${created.code}/action`, host, {
+    type: 'difficulty', difficulty: 'cheat', actionId: randomUUID(), expectedVersion: before.version });
+  assert.equal(malformed.status, 400);
+  assert.equal((await env.session(host)).version, before.version);
+  await env.close();
+  const restored = createApp({ dbPath: join(env.directory, 'state.sqlite'), port: 0, disconnectGrace: 60_000 });
+  const port = await restored.listen(); t.after(() => restored.close());
+  const response = await fetch(`http://127.0.0.1:${port}/api/session`, { headers: { Authorization: 'Bearer ' + guest } });
+  assert.equal((await response.json()).view.difficulty, 'advanced');
+  const room = restored.rooms.rooms.get(created.code)!;
+  restored.rooms.action(room.code, host, { type: 'start', actionId: randomUUID(), expectedVersion: room.version });
+  assert.throws(() => restored.rooms.action(room.code, host, {
+    type: 'difficulty', difficulty: 'easy', actionId: randomUUID(), expectedVersion: room.version }), /打完/);
+  assert.equal(room.difficulty, 'advanced');
+});
+test('selected difficulty reaches an isolated real AI worker and its accepted decision', async t => {
+  const trace: Record<string, unknown>[] = [];
+  const env = await setup(t, { firstSeat: () => 1, audit: event => trace.push(event) });
+  const host = token(); await env.create(host);
+  await env.act(host, 'difficulty', { difficulty: 'advanced' });
+  await env.act(host, 'start');
+  await until(() => trace.some(e => e.type === 'ai_accepted'));
+  const input = trace.find(e => e.type === 'ai_input')!, accepted = trace.find(e => e.type === 'ai_accepted')!;
+  assert.equal((input.observation as Observation).difficulty, 'advanced');
+  assert.deepEqual(accepted.decision, decide(input.observation as Observation));
+  assert.equal('hands' in (input.observation as Observation), false);
 });
 test('late friend claims an AI seat without replacing a disconnected human seat', async t => {
   const env = await setup(t, { firstSeat: () => 1, botDelay: 150 });

@@ -11,8 +11,8 @@ function record(input) {
   if (output.error) throw new Error(output.error);
   fixtures.push({ input, expected: output }); return output;
 }
-for (const testSeed of [0, 17, 1729]) {
-  let output = record({ op: 'new', testSeed, name: '练习牌友' });
+for (const difficulty of ['easy', 'standard', 'advanced']) for (const testSeed of [0, 17, 1729]) {
+  let output = record({ op: 'new', testSeed, name: '练习牌友', difficulty });
   for (let step = 0; step < 4; step++) {
     if (output.needsBot) output = record({ op: 'tick', state: output.state });
     else {
