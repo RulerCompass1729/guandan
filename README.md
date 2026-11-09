@@ -2,6 +2,10 @@
 
 面向亲友的原生 Android 掼蛋，作者 **RulerCompass1729**。安装 APK 后可直接和三个电脑练习；多人连接同一服务，用八位桌号入座，空位由电脑补齐。
 
+**[下载安装包：Android 试玩版 0.4.0（约 2.8 MB）](https://github.com/RulerCompass1729/guandan/releases/download/v0.4.0/guandan-0.4.0.apk)** · [两分钟中文教程](https://github.com/RulerCompass1729/guandan/releases/download/v0.4.0/guandan-0.4.0-guide-zh.mp4) · [0.4.0 发布页](https://github.com/RulerCompass1729/guandan/releases/tag/v0.4.0)
+
+下载后在安卓手机打开 `.apk` 安装，已有旧版可直接覆盖，无需卸载。从发布页查找时，展开下方 **Assets**，选择 `guandan-0.4.0.apk`。
+
 **当前是本机试玩和模拟器联机阶段，尚未部署国内公网游戏服务。** 发布包不预填服务器，异地联机需要组织者提供可达的 HTTPS 服务。Mate 30 实机和长辈独立试用仍待验，模拟器结果不代表华为 ROM 已通过。
 
 ## 安装与操作
